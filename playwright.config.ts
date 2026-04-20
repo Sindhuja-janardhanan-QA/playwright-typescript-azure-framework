@@ -1,4 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Get environment variables with defaults
+const baseURL = process.env.BASE_URL || 'https://demo.playwright.dev';
+const timeout = parseInt(process.env.TIMEOUT || '60000', 10);
+const retries = parseInt(process.env.RETRIES || '2', 10);
+const isCI = process.env.CI === 'true';
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -13,7 +23,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   
   /* Retry on CI only */
-  retries: process.env.CI ? 2 : 2,
+  retries: retries,
   
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 4 : undefined,
@@ -29,7 +39,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'https://demo.playwright.dev',
+    baseURL: baseURL,
     
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -41,10 +51,10 @@ export default defineConfig({
     video: 'retain-on-failure',
     
     /* Global timeout for each action */
-    actionTimeout: 10000,
+    actionTimeout: timeout / 6, // 1/6 of total timeout
     
     /* Global timeout for navigation */
-    navigationTimeout: 30000
+    navigationTimeout: timeout / 2
   },
 
   /* Configure projects for major browsers */
@@ -87,7 +97,7 @@ export default defineConfig({
   // globalTeardown: './tests/global-teardown.ts',
   
   /* Test timeout */
-  timeout: 60000,
+  timeout: timeout,
   
   /* Expect timeout */
   expect: {

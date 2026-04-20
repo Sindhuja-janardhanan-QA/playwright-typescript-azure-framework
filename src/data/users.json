@@ -1,0 +1,47 @@
+[
+  {
+    "username": "admin@example.com",
+    "password": "Admin123!",
+    "description": "Admin user with full access",
+    "userType": "admin",
+    "expectedOutcome": "success",
+    "expectedRedirect": "/admin/dashboard",
+    "expectedWelcomeMessage": "Welcome, Administrator"
+  },
+  {
+    "username": "user@example.com",
+    "password": "User123!",
+    "description": "Regular user with standard access",
+    "userType": "standard",
+    "expectedOutcome": "success",
+    "expectedRedirect": "/user/dashboard",
+    "expectedWelcomeMessage": "Welcome back"
+  },
+  {
+    "username": "locked@example.com",
+    "password": "Locked123!",
+    "description": "Locked user account",
+    "userType": "locked",
+    "expectedOutcome": "failure",
+    "expectedErrorMessage": "Account is locked. Please contact administrator.",
+    "expectedRedirect": "/login"
+  },
+  {
+    "username": "invalid@example.com",
+    "password": "WrongPassword!",
+    "description": "Invalid credentials test",
+    "userType": "invalid",
+    "expectedOutcome": "failure",
+    "expectedErrorMessage": "Invalid email or password",
+    "expectedRedirect": "/login"
+  },
+  {
+    "username": "expired@example.com",
+    "password": "Expired123!",
+    "description": "User with expired password",
+    "userType": "expired",
+    "expectedOutcome": "password_reset_required",
+    "expectedRedirect": "/reset-password",
+    "expectedErrorMessage": "Your password has expired. Please reset it."
+  }
+]

@@ -1,0 +1,292 @@
+# Azure DevOps Pipeline for Playwright TypeScript Framework
+# Demonstrates enterprise-grade CI/CD setup for automated testing
+
+trigger:
+  branches:
+    include:
+    - main
+    - develop
+    - release/*
+  tags:
+    include:
+    - v*
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+
+variables:
+  NODE_VERSION: '20.x'
+  PLAYWRIGHT_BROWSERS: '0'
+  CI: 'true'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+- stage: BuildAndTest
+  displayName: 'Build and Test Stage'
+  jobs:
+  - job: Test
+    displayName: 'Run Playwright Tests'
+    timeoutInMinutes: 30
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+      displayName: 'Install Node.js $(NODE_VERSION)'
+
+    - script: |
+        node --version
+        npm --version
+      displayName: 'Verify Node.js Installation'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+      continueOnError: false
+
+    - script: |
+        npx playwright install --with-deps
+      displayName: 'Install Playwright Browsers'
+      continueOnError: false
+
+    - script: |
+        npx playwright install-deps
+      displayName: 'Install System Dependencies for Playwright'
+      condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'))
+
+    - script: |
+        npm run type-check
+      displayName: 'Run TypeScript Type Checking'
+      continueOnError: true
+
+    - script: |
+        npm run lint
+      displayName: 'Run ESLint Code Quality Check'
+      continueOnError: true
+
+    - script: |
+        npm run test -- --reporter=json --reporter=junit --reporter=html --outputFile=test-results.json
+      displayName: 'Run Playwright Tests'
+      env:
+        CI: 'true'
+
+    - task: PublishTestResults@2
+      displayName: 'Publish JUnit Test Results'
+      inputs:
+        testResultsFiles: 'test-results.xml'
+        testRunTitle: 'Playwright Test Results'
+        mergeTestResults: true
+        testResultsFormat: 'JUnit'
+      condition: succeededOrFailed()
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish HTML Test Report'
+      inputs:
+        PathtoPublish: 'playwright-report'
+        ArtifactName: 'playwright-report'
+        publishLocation: 'Container'
+      condition: succeededOrFailed()
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Test Results JSON'
+      inputs:
+        PathtoPublish: 'test-results.json'
+        ArtifactName: 'test-results-json'
+        publishLocation: 'Container'
+      condition: succeededOrFailed()
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Test Screenshots'
+      inputs:
+        PathtoPublish: 'test-results'
+        ArtifactName: 'test-screenshots'
+        publishLocation: 'Container'
+      condition: succeededOrFailed()
+
+    - script: |
+        echo "##vso[task.setvariable variable=hasTestFailures]$(node -p \"require('./test-results.json').suites.some(suite => suite.specs.some(spec => spec.tests.some(test => !test.results[0].status === 'passed'))\")\")"
+      displayName: 'Check for Test Failures'
+      condition: succeededOrFailed()
+
+    - script: |
+        echo "📊 Test Summary:"
+        echo "✅ Total Tests: $(node -p \"require('./test-results.json').suites.reduce((acc, suite) => acc + suite.specs.reduce((specAcc, spec) => specAcc + spec.tests.length, 0), 0)\")"
+        echo "🎯 Passed: $(node -p \"require('./test-results.json').suites.reduce((acc, suite) => acc + suite.specs.reduce((specAcc, spec) => specAcc + spec.tests.filter(test => test.results[0].status === 'passed').length, 0), 0)\")"
+        echo "❌ Failed: $(node -p \"require('./test-results.json').suites.reduce((acc, suite) => acc + suite.specs.reduce((specAcc, spec) => specAcc + spec.tests.filter(test => test.results[0].status === 'failed').length, 0), 0)\")"
+        echo "⏱️ Duration: $(node -p \"(require('./test-results.json').suites.reduce((acc, suite) => acc + suite.specs.reduce((specAcc, spec) => specAcc + spec.tests.reduce((testAcc, test) => testAcc + test.results[0].duration, 0), 0), 0) / 1000).toFixed(2)\"s)"
+      displayName: 'Display Test Summary'
+      condition: succeededOrFailed()
+
+- stage: CrossBrowserTest
+  displayName: 'Cross-Browser Testing'
+  dependsOn: BuildAndTest
+  condition: succeeded()
+  jobs:
+  - job: ChromeTests
+    displayName: 'Chrome Browser Tests'
+    timeoutInMinutes: 20
+    strategy:
+      matrix:
+        Chrome:
+          BROWSER: 'chromium'
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npx playwright install --with-deps chromium
+      displayName: 'Install Chrome Browser'
+
+    - script: |
+        npm run test -- --project=chrome --reporter=json --outputFile=chrome-test-results.json
+      displayName: 'Run Chrome Tests'
+      env:
+        CI: 'true'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Chrome Test Results'
+      inputs:
+        PathtoPublish: 'chrome-test-results.json'
+        ArtifactName: 'chrome-test-results'
+        publishLocation: 'Container'
+
+  - job: FirefoxTests
+    displayName: 'Firefox Browser Tests'
+    timeoutInMinutes: 20
+    strategy:
+      matrix:
+        Firefox:
+          BROWSER: 'firefox'
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npx playwright install --with-deps firefox
+      displayName: 'Install Firefox Browser'
+
+    - script: |
+        npm run test -- --project=firefox --reporter=json --outputFile=firefox-test-results.json
+      displayName: 'Run Firefox Tests'
+      env:
+        CI: 'true'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Firefox Test Results'
+      inputs:
+        PathtoPublish: 'firefox-test-results.json'
+        ArtifactName: 'firefox-test-results'
+        publishLocation: 'Container'
+
+  - job: SafariTests
+    displayName: 'Safari Browser Tests'
+    timeoutInMinutes: 20
+    strategy:
+      matrix:
+        WebKit:
+          BROWSER: 'webkit'
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npx playwright install --with-deps webkit
+      displayName: 'Install Safari Browser'
+
+    - script: |
+        npm run test -- --project=webkit --reporter=json --outputFile=safari-test-results.json
+      displayName: 'Run Safari Tests'
+      env:
+        CI: 'true'
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Safari Test Results'
+      inputs:
+        PathtoPublish: 'safari-test-results.json'
+        ArtifactName: 'safari-test-results'
+        publishLocation: 'Container'
+
+- stage: SecurityScan
+  displayName: 'Security and Quality Scan'
+  dependsOn: BuildAndTest
+  condition: succeeded()
+  jobs:
+  - job: SecurityCheck
+    displayName: 'Security Vulnerability Scan'
+    timeoutInMinutes: 15
+    
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+      displayName: 'Install Node.js'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npm audit --audit-level=moderate
+      displayName: 'Check for Security Vulnerabilities'
+      continueOnError: true
+
+    - script: |
+        npm run lint
+      displayName: 'Code Quality Check'
+      continueOnError: true
+
+    - script: |
+        npm run type-check
+      displayName: 'TypeScript Type Check'
+      continueOnError: true
+
+# Optional: Deployment stage (commented out for demo purposes)
+# - stage: Deploy
+#   displayName: 'Deploy to Staging'
+#   dependsOn: [BuildAndTest, CrossBrowserTest]
+#   condition: succeeded()
+#   jobs:
+#   - deployment: DeployToStaging
+#     displayName: 'Deploy to Staging Environment'
+#     environment: 'staging'
+#     strategy:
+#       runOnce:
+#         deploy:
+#           steps:
+#           - checkout: self
+#           - task: NodeTool@0
+#             inputs:
+#               versionSpec: '$(NODE_VERSION)'
+#           - script: |
+#               npm ci
+#               npm run build
+#             displayName: 'Build Application'
+#           - script: |
+#               echo "Deploying to staging environment..."
+#             displayName: 'Deploy to Staging'
